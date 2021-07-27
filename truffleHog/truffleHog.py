@@ -53,7 +53,7 @@ def main():
     parser.set_defaults(repo_path=None)
     parser.set_defaults(cleanup=False)
     args = parser.parse_args()
-    rules = {}
+    rules = {} # 规则
     if args.rules:
         try:
             with open(args.rules, "r") as ruleFile:
@@ -66,7 +66,7 @@ def main():
             del regexes[regex]
         for regex in rules:
             regexes[regex] = rules[regex]
-    allow = {}
+    allow = {} # 文件
     if args.allow:
         try:
             with open(args.allow, "r") as allowFile:
@@ -88,7 +88,8 @@ def main():
         for pattern in set(l[:-1].lstrip() for l in args.exclude_paths):
             if pattern and not pattern.startswith('#'):
                 path_exclusions.append(re.compile(pattern))
-
+    
+    # 入口
     output = find_strings(args.git_url, args.since_commit, args.max_depth, args.output_json, args.do_regex, do_entropy,
             surpress_output=False, custom_regexes=regexes, branch=args.branch, repo_path=args.repo_path, path_inclusions=path_inclusions, path_exclusions=path_exclusions, allow=allow)
     project_path = output["project_path"]
@@ -151,6 +152,7 @@ def get_strings_of_set(word, char_set, threshold=20):
                 strings.append(letters)
             letters = ""
             count = 0
+    # 忽略小于threshold 的行
     if count > threshold:
         strings.append(letters)
     return strings
@@ -261,6 +263,7 @@ def regex_check(printableDiff, commit_time, branch_name, prev_commit, blob, comm
             regex_matches.append(foundRegex)
     return regex_matches
 
+# diff 查看
 def diff_worker(diff, curr_commit, prev_commit, branch_name, commitHash, custom_regexes, do_entropy, do_regex, printJson, surpress_output, path_inclusions, path_exclusions, allow):
     issues = []
     for blob in diff:
@@ -273,11 +276,11 @@ def diff_worker(diff, curr_commit, prev_commit, branch_name, commitHash, custom_
             printableDiff = allow[key].sub('', printableDiff)
         commit_time =  datetime.datetime.fromtimestamp(prev_commit.committed_date).strftime('%Y-%m-%d %H:%M:%S')
         foundIssues = []
-        if do_entropy:
+        if do_entropy: # 熵检测 
             entropicDiff = find_entropy(printableDiff, commit_time, branch_name, prev_commit, blob, commitHash)
             if entropicDiff:
                 foundIssues.append(entropicDiff)
-        if do_regex:
+        if do_regex: # 正则检测
             found_regexes = regex_check(printableDiff, commit_time, branch_name, prev_commit, blob, commitHash, custom_regexes)
             foundIssues += found_regexes
         if not surpress_output:
@@ -319,18 +322,27 @@ def path_included(blob, include_patterns=None, exclude_patterns=None):
         return False
     return True
 
-
+# 入口 Main 
 def find_strings(git_url, since_commit=None, max_depth=1000000, printJson=False, do_regex=False, do_entropy=True, surpress_output=True,
                 custom_regexes={}, branch=None, repo_path=None, path_inclusions=None, path_exclusions=None, allow={}):
+    ”“”
+    git_url
+    since_commit
+    max_depth
+    “”“
     output = {"foundIssues": []}
+    # repo path
     if repo_path:
         project_path = repo_path
     else:
         project_path = clone_git_repo(git_url)
-    repo = Repo(project_path)
+    repo = Repo(project_path)  # git.Repo 
+    
     already_searched = set()
     output_dir = tempfile.mkdtemp()
-
+    
+    # 切换Branch
+    
     if branch:
         branches = repo.remotes.origin.fetch(branch)
     else:
@@ -359,6 +371,8 @@ def find_strings(git_url, since_commit=None, max_depth=1000000, printJson=False,
                 diff = prev_commit.diff(curr_commit, create_patch=True)
             # avoid searching the same diffs
             already_searched.add(diff_hash)
+            
+            # 处理 & 输出
             foundIssues = diff_worker(diff, curr_commit, prev_commit, branch_name, commitHash, custom_regexes, do_entropy, do_regex, printJson, surpress_output, path_inclusions, path_exclusions, allow)
             output = handle_results(output, output_dir, foundIssues)
             prev_commit = curr_commit
